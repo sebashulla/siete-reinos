@@ -74,3 +74,15 @@ test('interest filtering protects distant entities while events reach the campai
  const event=e.state.events[0];e.step(event.endsAt+1,50);assert.equal(event.phase,'failed');assert.equal(e.state.realms.valdoria.supply,70);
  e.state.enemies.find(n=>n.id===event.targetId)!.hp=0;e.step(event.endsAt+2,50);assert.equal(event.phase,'recovering');e.step(event.endsAt+1,50);assert.equal(event.phase,'complete');assert.equal(e.state.realms.valdoria.supply,100);
 });
+
+test('server evidence distinguishes self defense and respects the law at action start',()=>{
+ const e=setup(),p=e.state.players['char-0'];at(e,p.character.id,'guard-duncrest');p.actor.direction='left';
+ e.state.events.push({id:'crisis-test',kind:'crisis',phase:'active',startedAt:90000,endsAt:200000,progress:0,targetId:'none',notice:'test'});
+ e.step(100000,50);assert.ok(p.actor.hp<p.actor.maxHp);
+ const coins=p.character.coins;command(e,p.character.id,'sword',100100);
+ const proof=e.state.cases.at(-1)!;assert.equal(proof.evidence.selfDefense,true);assert.equal(proof.status,'dismissed');assert.equal(p.character.coins,coins);
+ const free=SITES.find(s=>s.id==='vein-0')!;at(e,p.character.id,free.id);e.state.realms.duncrest.policy='normal';
+ const qty=p.character.inventory.feron;command(e,p.character.id,'interact',101000,free.id);
+ e.state.realms.duncrest.policy='checkpoint';e.state.realms.duncrest.lawVersion++;
+ e.step(103201,50);assert.equal(p.character.inventory.feron,qty+1);assert.equal(e.state.cases.length,1);
+});

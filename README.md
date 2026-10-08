@@ -29,7 +29,7 @@ Sin servidor configurado, entrar a una campaña muestra un error. La aventura lo
 ## Migrar y desplegar
 
 1. Exportar datos y esquema a un directorio privado fuera del repositorio. Guardar también el catálogo real de PostgreSQL, políticas, funciones y las identidades de Auth. Para una copia completa de la plataforma usar `supabase db dump`/`pg_dump`; la exportación de progreso no reemplaza las copias de Storage ni todos los componentes gestionados de Auth. [Backups de Supabase](https://supabase.com/docs/guides/platform/backups).
-2. `node --env-file=.env.server.local scripts/backup-progress.mjs /private/backup/v1` exporta las tablas de la aplicación y los metadatos de identidad. No ejecutar sobre un directorio dentro del repositorio. Conservar una copia completa independiente y cifrada cuando el proyecto crezca.
+2. `node --env-file=.env.server.local scripts/backup-progress.mjs /private/backup/fecha` exporta las tablas de la aplicación y los metadatos de identidad, incluyendo campañas, puntos de guardado, cambios y pruebas en v2. Ejecutarlo sin partidas conectadas: la exportación REST no es una transacción entre tablas. No ejecutar sobre un directorio dentro del repositorio. Conservar una copia completa independiente y cifrada cuando el proyecto crezca.
 3. `node scripts/rehearse-migration.mjs /private/backup/v1` restaura las tablas en PostgreSQL local PGlite, comprueba el esquema real y ensaya la migración. El catálogo privado esperado es `live-catalog-and-auth.json`, exportado desde el SQL Editor; no subirlo a Git.
 4. En proyectos nuevos aplicar `202610080001_initial.sql` y después `202610080002_campaigns.sql`. En el proyecto existente aplicar solo la segunda, una única vez, tras superar restauración y regresión. La migración es transaccional y aditiva: los personajes existentes quedan sin campaña; no se copian ni se reinician.
 5. Crear un servicio web **Free** en Render con este repositorio, raíz del repositorio, build `npm ci --include=dev && npm run check:server`, inicio `npm run server`, health check `/healthz`. `render.yaml` contiene la configuración equivalente. Configurar las credenciales privilegiadas únicamente allí y mantener `ALLOW_HARDCORE_EXECUTIONS=false` en producción.
@@ -75,6 +75,8 @@ npm run test:campaigns
 Las pruebas cubren sprites, colisiones, límites de protocolo, cuatro actores, vida y recompensas, minería, procedencia y apelaciones, rescate y UTC, restricciones hardcore, aislamiento, preservación exacta, límite de miembros, RLS, rechazo de writes del navegador, atomicidad, idempotencia y exclusión de servidores simultáneos.
 
 Las pruebas de integración requieren cuentas QA confirmadas y sesiones de Auth independientes. Nunca guardar sus contraseñas en informes o en Git. Usar dos orígenes locales (`127.0.0.1` y `localhost`) o perfiles independientes para la prueba visual; dos pestañas del mismo origen comparten Auth.
+
+`npm run test:online` verifica cuatro identidades contra PostgreSQL real y un servidor local, incluyendo pérdida de confirmación del commit, interrupción de persistencia y reinicio. `npm run test:online -- --remote` comprueba cuatro conexiones en el servidor publicado. `node --env-file=.env.local --env-file=.env.server.local --import tsx scripts/verify-gameplay.mjs` recorre el mapa y comprueba minería y recompensas reales con dos cuentas QA. Son pruebas que crean campañas aisladas y modifican únicamente sus personajes de prueba; los informes quedan ignorados en `artifacts/`.
 
 ## Controles y arte
 

@@ -11,6 +11,13 @@ const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false
 const instance=randomUUID(),runtimes=new Map<string,Runtime>();
 const allowedOrigins=(process.env.ALLOWED_ORIGINS??'http://127.0.0.1:5173,http://localhost:5173').split(',');
 const hardcoreEnabled=process.env.ALLOW_HARDCORE_EXECUTIONS==='true';
+function rejectConnection(socket:WebSocket,message:string,code:number):void{
+  if(socket.readyState!==WebSocket.OPEN)return;
+  socket.send(JSON.stringify({v:2,type:'error',message,code,fatal:true,retryable:code===4010}));
+  socket.close(code,code===4010?'Recuperando servidor':'No autorizado');
+  // A proxy may not complete the close handshake; rejected peers retain no world access.
+  const cleanup=setTimeout(()=>socket.terminate(),5000);cleanup.unref();socket.once('close',()=>clearTimeout(cleanup));
+}
 interface Peer {socket:WebSocket;id:string;userId:string;expires:number;window:number;messages:number;queue:{input:ReturnType<typeof parseInput>;at:number}[]}
 class Runtime {
   peers=new Map<string,Peer>();revision=0;epoch=0;engine!:WorldEngine;seq=0;
@@ -91,19 +98,20 @@ const wss=new WebSocketServer({noServer:true,maxPayload:4096});
 http.on('upgrade',(req,socket,head)=>{if(req.url!=='/game'||req.headers.origin&&!allowedOrigins.includes(req.headers.origin)){socket.destroy();return;}wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});
 wss.on('connection',socket=>{
   let r:Runtime|undefined,id:string|undefined,authenticating=false;
-  const timeout=setTimeout(()=>socket.close(4003,'Autenticación requerida'),10000);
+  const timeout=setTimeout(()=>rejectConnection(socket,'Autenticación requerida',4003),10000);
   socket.on('message',async raw=>{
     if(r&&id){r.receive(socket,id,raw as Buffer);return;}
     if(authenticating)return;authenticating=true;
     try{
       const hello=JSON.parse(raw.toString());if(hello.v!==2||hello.type!=='auth'||typeof hello.token!=='string'||typeof hello.campaignId!=='string')throw new Error('Autenticación inválida');
-      const {data:identity,error:identityError}=await db.auth.getUser(hello.token);if(identityError||!identity.user)throw new Error('Sesión inválida');
-      const {data:member,error:memberError}=await db.from('campaign_members').select('consent_version').eq('campaign_id',hello.campaignId).eq('user_id',identity.user.id).single();if(memberError||!member)throw new Error('Campaña no autorizada');
+      const {data:identity,error:identityError}=await db.auth.getUser(hello.token);if(identityError){if((identityError.status??0)>=500||identityError.name==='AuthRetryableFetchError')throw new Error('Autenticación no disponible; recuperando servidor');throw new Error('Sesión inválida');}if(!identity.user)throw new Error('Sesión inválida');
+      const {data:member,error:memberError}=await db.from('campaign_members').select('consent_version').eq('campaign_id',hello.campaignId).eq('user_id',identity.user.id).maybeSingle();if(memberError)throw memberError;if(!member)throw new Error('Campaña no autorizada');
       const {data:campaign,error:campaignError}=await db.from('campaigns').select('*').eq('id',hello.campaignId).single();if(campaignError)throw campaignError;
-      const {data:character,error:characterError}=await db.from('characters').select('*').eq('campaign_id',campaign.id).eq('user_id',identity.user.id).eq('life_status','active').single();if(characterError)throw new Error('Crea o vincula un personaje para esta campaña');
+      const {data:character,error:characterError}=await db.from('characters').select('*').eq('campaign_id',campaign.id).eq('user_id',identity.user.id).eq('life_status','active').maybeSingle();if(characterError)throw characterError;if(!character)throw new Error('Crea o vincula un personaje para esta campaña');
       const payload=JSON.parse(Buffer.from(hello.token.split('.')[1],'base64url').toString()); // signature already verified by getUser
       r=await runtime(campaign as Campaign);id=character.id;await r.connect(socket,character as Character,payload.exp*1000);clearTimeout(timeout);
-    }catch(error){socket.send(JSON.stringify({v:2,type:'error',message:(error as {message?:string}).message??'No se pudo entrar'}));socket.close(4003,'No autorizado');}
+    }catch(error){clearTimeout(timeout);const message=(error as {message?:string}).message??'No se pudo entrar';
+      const retryable=/recuper|Autoridad|Revisión|fetch|503|unavailable|paused|timeout|schema cache|database|connection/i.test(message);rejectConnection(socket,message,retryable?4010:4003);}
   });
   socket.on('close',()=>{clearTimeout(timeout);if(r&&id)r.disconnect(socket,id);});
   socket.on('error',()=>socket.close());

@@ -305,6 +305,7 @@ if(import.meta.env.DEV&&new URLSearchParams(location.search).get('qa')==='1'){
   listen<{id:string;health:number}[]>('qa-world',enemies=>{el('qa-world').textContent=`ENEMIGOS · ${enemies.map(e=>`${e.id}:${e.health}`).join(' · ')||'ninguno'}`;});
   listen<Hud>('hud',hud=>{el('qa-position').textContent=`LOCAL · ${Math.round(hud.x)}, ${Math.round(hud.y)}`;});
   listen<boolean>('qa-motion',moving=>{el('qa-motion').textContent=`MOVIMIENTO · ${moving?'EN CURSO':'DETENIDO'}`;});
+  listen<{name:string;x:number;y:number;hp:number;maxHp:number}[]>('qa-remote',actors=>{el('qa-remote').textContent='REMOTOS · '+actors.map(a=>a.name+' '+a.x+','+a.y+' VIDA '+a.hp+'/'+a.maxHp).join(' · ');});
 }
 
 listen('laws',showLaws);el('laws-button').onclick=showLaws;

@@ -58,9 +58,9 @@ class Peer{
  constructor(i,campaignId=campaign.id){this.i=i;this.campaignId=campaignId;this.seq=0;this.frames=[];this.errors=[];this.closed=false;}
  async open(){const u=new URL(endpoint);u.protocol=u.protocol==='https:'?'wss:':'ws:';u.pathname='/game';this.ws=new WebSocket(u,{origin:'http://127.0.0.1:5173'});
   this.ws.on('open',()=>this.ws.send(JSON.stringify({v:2,type:'auth',campaignId:this.campaignId,token:identities[this.i].session.access_token})));
-  this.ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='state'){this.state=m;this.frames.push(Date.now());}if(m.type==='error')this.errors.push(m.message);});
-  this.ws.on('close',code=>{this.closed=code;});this.ws.on('error',()=>{});
-  await until(()=>this.state||this.closed);return this;
+  this.ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='state'){this.state=m;this.frames.push(Date.now());}if(m.type==='error'){this.errors.push(m.message);if(m.fatal){this.rejection=m;this.ws.close();}}});
+  this.ws.on('close',(code,reason)=>{this.closed=code;this.closeReason=reason.toString();});this.ws.on('error',()=>{});
+  await until(()=>this.state||this.closed||this.rejection);return this;
  }
  input(dx=0,dy=0,direction='down',action,target,extra={}){const m={v:2,campaignId:this.campaignId,seq:++this.seq,dx,dy,direction,action,target,...extra};this.ws.send(JSON.stringify(m));return m;}
  close(){this.ws?.close();}
@@ -86,7 +86,7 @@ try{
  const hp=peers[0].state.actors.find(a=>a.id==='guard-valdoria').hp;peers[0].ws.send(JSON.stringify(attack));await sleep(300);assert.equal(peers[0].state.actors.find(a=>a.id==='guard-valdoria').hp,hp);
  report.checks.push('server-validated damage shared across all four; repeated message rejected');
  const coins=peers[0].state.character.coins;peers[0].input(0,0,'down',undefined,undefined,{x:999999,hp:99999,coins:999999});await sleep(300);assert.equal(peers[0].state.character.coins,coins);
- const intruder=await new Peer(0,isolated.id).open();assert.equal(intruder.closed,4003);intruder.close();report.checks.push('cross-campaign channel access and forged stats rejected; PostgreSQL RLS');
+ const intruder=await new Peer(0,isolated.id).open();assert.equal(intruder.rejection?.code??intruder.closed,4003);await sleep(300);assert.equal(intruder.state,undefined);intruder.close();report.checks.push('cross-campaign channel access and forged stats rejected; PostgreSQL RLS');
  await until(()=>actor().state==='jailed',7000);
  if(!remote){
   const old=peers[0].state.cases.at(-1).jailUntil;dropResponse=true;peers[0].input(0,0,'down','work');
@@ -96,7 +96,8 @@ try{
   const previous=peers[0].state.cases.at(-1).jailUntil;peers[0].input(0,0,'down','work');await sleep(1200);assert.equal(peers[0].state.cases.at(-1).jailUntil,previous);
   failCommits=false;await until(()=>peers[0].state.cases.at(-1).status==='appealed');report.checks.push('persistence outage suspends critical actions and unpublished sentences; recovery');
   const restoredCase=structuredClone(peers[0].state.cases.at(-1)),inventory=structuredClone(peers[0].state.character.inventory);
-  peers.forEach(p=>p.close());await sleep(300);await stop();await start();const recovered=await new Peer(0).open();
+  peers.forEach(p=>p.close());await sleep(300);await stop();await start();let recovered;
+  await until(async()=>{const p=await new Peer(0).open();if(p.state){recovered=p;return true;}assert.equal(p.rejection?.code??p.closed,4010,JSON.stringify(p.errors));p.close();await sleep(1000);return false;},30000);
   assert.deepEqual(recovered.state.character.inventory,inventory);assert.equal(recovered.state.cases.at(-1).jailUntil,restoredCase.jailUntil);assert.equal(recovered.state.cases.at(-1).status,restoredCase.status);recovered.close();
   report.checks.push('server restart restores inventory, case, UTC deadline and authority epoch');
  }

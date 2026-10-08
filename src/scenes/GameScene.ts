@@ -87,8 +87,11 @@ export class GameScene extends Phaser.Scene {
  applyState(state:Snapshot):void{
   if(state.epoch===this.epoch&&state.seq<=this.lastStateSeq)return;this.epoch=state.epoch;this.lastStateSeq=state.seq;this.received=state;
   Object.assign(this.session.character,state.character);const own=state.actors.find(a=>a.id===this.session.character.id);if(!own)return;
-  this.own=own;this.player.dead=own.state==='downed'||own.state==='executed';const d=Math.hypot(this.player.sprite.x-own.x,this.player.sprite.y-own.y);
-  if(d>50||own.state!=='alive')this.player.sprite.setPosition(own.x,own.y);else if(d>3)this.player.sprite.setPosition(Phaser.Math.Linear(this.player.sprite.x,own.x,.4),Phaser.Math.Linear(this.player.sprite.y,own.y,.4));
+  this.own=own;this.player.dead=own.state==='downed'||own.state==='executed';let predicted={x:own.x,y:own.y};
+  const moves=this.session.multiplayer?.acknowledge(state.ack)??[];
+  if(own.state==='alive')for(const m of moves){const len=Math.hypot(m.dx,m.dy)||1,speed=statsFor(this.session.character).speed;predicted=moveColliding(predicted.x,predicted.y,m.dx/len*speed*.05,m.dy/len*speed*.05);}
+  const d=Math.hypot(this.player.sprite.x-predicted.x,this.player.sprite.y-predicted.y);
+  if(d>70||own.state!=='alive')this.player.sprite.setPosition(predicted.x,predicted.y);else if(d>3)this.player.sprite.setPosition(Phaser.Math.Linear(this.player.sprite.x,predicted.x,.4),Phaser.Math.Linear(this.player.sprite.y,predicted.y,.4));
   if(['attack','hurt','death'].includes(own.animation))this.player.animate(own.animation,300);
   for(const actor of state.actors)if(actor.effect&&this.effects.get(actor.id)!==actor.effect.seq){
    const seen=this.effects.has(actor.id);this.effects.set(actor.id,actor.effect.seq);
@@ -102,6 +105,7 @@ export class GameScene extends Phaser.Scene {
    else{let visual=this.actors.get(actor.id);if(!visual){visual=new Player(this,{user_id:actor.userId??actor.id,character_id:actor.id,name:actor.name,affinity:actor.affinity,appearance:actor.appearance},actor.x,actor.y,false);this.actors.set(actor.id,visual);if(actor.kind==='caravan'){visual.sprite.anims.stop();visual.sprite.setTexture('caravan');}}visual.setTarget({x:actor.x,y:actor.y,direction:actor.direction,moving:actor.moving,seq:state.seq});visual.setHealth(actor.hp,actor.maxHp);if(['attack','hurt','death'].includes(actor.animation))visual.animate(actor.animation,200);}
   }
   if(state.forge>=10)this.world.lightForge();emit('server-state',state);
+  if(import.meta.env.DEV)emit('qa-remote',state.actors.filter(a=>a.kind==='player'&&a.id!==own.id).map(a=>({name:a.name,x:Math.round(a.x),y:Math.round(a.y),hp:a.hp,maxHp:a.maxHp})));
  }
  rebuildForge():void{this.world.lightForge();}
  setZoom(zoom:number):void{this.cameras.main.setZoom(zoom);localStorage.setItem('siete-reinos:zoom',String(zoom));}

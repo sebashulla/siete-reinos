@@ -33,6 +33,18 @@ await asUser(db,ids[0],async()=>{
  const newChar=(await db.query('select * from create_campaign_character($1,$2,$3,$4)',[other.id,'Other_world','mage',{palette:'violet',skin:'deep'}])).rows[0];
  assert.equal(newChar.level,1);assert.notEqual(newChar.id,chars[0].id);assert.notEqual(newChar.coins,321);
 });
+const hardcore=await asUser(db,ids[5],async()=>{
+ await assert.rejects(db.query('select create_campaign($1,$2,$3)',['HC','hardcore',null]),/aceptar/);
+ return (await db.query('select * from create_campaign($1,$2,$3)',['HC test','hardcore',1])).rows[0];
+});
+await asUser(db,ids[4],async()=>{
+ const refusal=(await db.query('select join_campaign($1) as c',[hardcore.invite_code])).rows[0].c;
+ assert.equal(refusal.consent_required,true);
+ assert.equal((await db.query('select * from campaigns where id=$1',[hardcore.id])).rows.length,0);
+ assert.equal((await db.query('select join_campaign($1,$2) as c',[hardcore.invite_code,1])).rows[0].c.id,hardcore.id);
+ await assert.rejects(db.query('select claim_legacy_character($1,$2)',[chars[4].id,hardcore.id]),/casual/);
+ assert.equal((await db.query('select consent_version from campaign_members where user_id=$1',[ids[4]])).rows[0].consent_version,1);
+});
 const lease=(await db.query('select acquire_game_lease($1,$2) as l',[campaign.id,'node-a'])).rows[0].l;
 await assert.rejects(db.query('select acquire_game_lease($1,$2)',[campaign.id,'node-b']),/recuperándose/);
 const c=(await db.query('select * from characters where id=$1',[chars[0].id])).rows[0];
