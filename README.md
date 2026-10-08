@@ -2,6 +2,8 @@
 
 Prototipo RPG cenital en Phaser 3, TypeScript estricto y Vite, sin React. Interfaz en español. Recursos originales de pixel art generados por código, sin imágenes de terceros.
 
+**Jugar en la web:** [siete-reinos.vercel.app](https://siete-reinos.vercel.app/). Desplegado en Vercel y conectado a Supabase. Registro y salas privadas disponibles desde el navegador.
+
 ## Ejecutar
 
 Requiere Node.js 22.12 o superior.
