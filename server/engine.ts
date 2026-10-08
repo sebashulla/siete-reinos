@@ -131,14 +131,14 @@ export class WorldEngine {
     if(offense==='assault'&&this.state.cases.some(c=>c.characterId===p.character.id&&c.evidence.offense==='assault'&&now-c.evidence.at<10000))return;
     const territory=p.actor.territory,witnesses=this.state.npcs.filter(n=>n.hp>0&&distance(n,p.actor)<280&&this.visible(n,p.actor)).map(n=>n.id);
     const evidence:Evidence={eventId,at:now,actorId:p.character.id,victimId,territory,x:p.actor.x,y:p.actor.y,lawVersion:lawVersion??this.state.realms[territory].lawVersion,witnesses,offense,selfDefense,restituted:false};
-    const previous=this.state.cases.filter(c=>c.characterId===p.character.id&&c.evidence.offense==='homicide'&&!['dismissed','resolved'].includes(c.status)).length;
+    const previous=this.state.cases.filter(c=>c.characterId===p.character.id&&c.evidence.offense==='homicide'&&!c.evidence.selfDefense&&c.evidence.witnesses.length>0&&!['dismissed','resolved'].includes(c.status)).length;
     const capital=this.campaign.mode==='hardcore'&&this.hardcoreEnabled&&offense==='homicide'&&previous>=1&&!selfDefense&&witnesses.length>0;
     const penalty={mining:{fine:5,jail:0},trespass:{fine:0,jail:0},theft:{fine:10,jail:60000},assault:{fine:5,jail:120000},homicide:{fine:25,jail:600000}}[offense];
     const c:LawCase={id:randomUUID(),characterId:p.character.id,evidence,status:selfDefense?'dismissed':witnesses.length?'sentenced':'open',fine:selfDefense?0:penalty.fine,jailUntil:selfDefense?0:now+(witnesses.length?penalty.jail:0),exileUntil:offense==='homicide'&&!selfDefense&&witnesses.length?now+600000:0,appealUntil:now+600000,capital,reason:selfDefense?'Legítima defensa':`Ley infringida: ${offense} · ${territory}`};
     if(c.status==='sentenced'){const paid=Math.min(p.character.coins,c.fine);p.character.coins-=paid;c.fine-=paid;c.paidFine=paid;p.reputation![territory]=Math.max(-100,p.reputation![territory]-5);this.state.realms[territory].opinion=Math.max(0,this.state.realms[territory].opinion-5);}
     this.state.cases.push(c);this.audit.push(evidence);p.notice=`${c.reason}. Pruebas: ${witnesses.length} testigos. Consulta tu causa.`;this.critical=true;
   }
-  private validCapital(c:LawCase):boolean{return c.evidence.offense==='homicide'&&!c.evidence.selfDefense&&c.evidence.witnesses.length>0&&this.state.cases.filter(other=>other.characterId===c.characterId&&other.evidence.offense==='homicide'&&!['dismissed','resolved'].includes(other.status)).length>=2;}
+  private validCapital(c:LawCase):boolean{return c.evidence.offense==='homicide'&&!c.evidence.selfDefense&&c.evidence.witnesses.length>0&&this.state.cases.filter(other=>other.characterId===c.characterId&&other.evidence.offense==='homicide'&&!other.evidence.selfDefense&&other.evidence.witnesses.length>0&&!['dismissed','resolved'].includes(other.status)).length>=2;}
   private allConsented():boolean{return Object.values(this.state.players).every(p=>this.consents.has(p.character.user_id));}
   step(now:number,dt:number):void{
     const delta=Math.min(dt,100)/1000;

@@ -10,7 +10,8 @@ const data={},tables=['profiles','characters','rooms','room_members','room_join_
 if(version>=2)tables.push('campaigns','campaign_members','campaign_state','game_commits','campaign_audit');
 for(const table of tables){
  data[table]=[];
- for(let from=0;;from+=1000){const {data:rows,error}=await db.from(table).select('*').range(from,from+999);if(error)throw error;data[table].push(...rows);if(rows.length<1000)break;}
+ const keys={campaign_members:['campaign_id','user_id'],campaign_state:['campaign_id'],game_commits:['campaign_id','event_id'],campaign_audit:['campaign_id','event_id'],room_members:['user_id'],room_join_limits:['user_id']}[table]??['id'];
+ for(let from=0;;from+=1000){let query=db.from(table).select('*').range(from,from+999);for(const key of keys)query=query.order(key);const {data:rows,error}=await query;if(error)throw error;data[table].push(...rows);if(rows.length<1000)break;}
 }
 const users=[];for(let page=1;;page++){const {data,error}=await db.auth.admin.listUsers({page,perPage:1000});if(error)throw error;users.push(...data.users);if(data.users.length<1000)break;}
 await mkdir(target,{recursive:true});

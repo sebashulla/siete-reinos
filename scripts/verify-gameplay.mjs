@@ -12,8 +12,8 @@ class Peer{
  constructor(i){this.i=i;this.seq=0;this.dx=0;this.dy=0;this.direction='down';}
  async open(){const url=new URL(endpoint);url.protocol=url.protocol==='https:'?'wss:':'ws:';url.pathname='/game';this.ws=new WebSocket(url,{origin:'http://127.0.0.1:5173'});
  this.ws.on('open',()=>this.ws.send(JSON.stringify({v:2,type:'auth',campaignId:campaign.id,token:sessions[this.i].access_token})));
- this.ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='state')this.state=m;});this.ws.on('error',()=>{});
- await wait(()=>this.state,90000);this.timer=setInterval(()=>this.input(),50);return this;
+ this.ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='state')this.state=m;if(m.type==='error')this.error=m;});this.ws.on('error',()=>{});
+ await wait(()=>this.state||this.error?.fatal,90000);if(!this.state){this.ws.close();throw new Error(this.error.message);}this.timer=setInterval(()=>this.input(),50);return this;
  }
  get actor(){return this.state.actors.find(a=>a.id===characters[this.i].id);}
  input(action,target,seq){this.ws.send(JSON.stringify({v:2,campaignId:campaign.id,seq:seq??++this.seq,dx:this.dx,dy:this.dy,direction:this.direction,action,target}));return this.seq;}
@@ -24,7 +24,8 @@ function route(start,target){
  const queue=[s],previous=new Map([[key(s),null]]),pass=new Map();let found;
  for(let n=0;n<queue.length;n++){const p=queue[n];if(p.x===t.x&&p.y===t.y){found=p;break;}
  for(const[dX,dY]of [[1,0],[-1,0],[0,1],[0,-1]]){const q={x:p.x+dX,y:p.y+dY},k=key(q);if(q.x<0||q.y<0||q.x>=w||q.y>=h||previous.has(k))continue;
- if(!pass.has(k))pass.set(k,walkable(q.x*size+size/2,q.y*size+size/2,15));if(!pass.get(k))continue;previous.set(k,p);queue.push(q);}}
+ // Leave clearance for observed WebSocket latency and the waypoint deadband.
+ if(!pass.has(k))pass.set(k,walkable(q.x*size+size/2,q.y*size+size/2,36));if(!pass.get(k))continue;previous.set(k,p);queue.push(q);}}
  if(!found)throw new Error('No walkable QA route');const path=[];for(let p=found;p;p=previous.get(key(p)))path.push({x:p.x*size+16,y:p.y*size+16});return path.reverse();
 }
 async function walk(peer,target){
@@ -47,11 +48,11 @@ try{
    const dx=victim.x-fighter.actor.x,dy=victim.y-fighter.actor.y;fighter.direction=Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up');duplicate=fighter.input('sword');},550);
   await wait(()=>fighter.state.character.coins>=before+8,15000);clearInterval(fighting);
  })();
- await Promise.all([combat,walk(peers[1],{x:4368,y:1552})]);
+ await Promise.all([combat,walk(peers[1],{x:4336,y:1552})]);
  const miner=peers[1];miner.input('interact','vein-0');await wait(()=>miner.state.character.inventory.feron===1,10000);const qty=miner.state.character.inventory.feron;
  miner.input('interact','vein-0');await sleep(2500);assert.equal(miner.state.character.inventory.feron,qty);
  const gained=fighter.state.character.coins;fighter.input('sword',undefined,duplicate);await sleep(500);assert.equal(fighter.state.character.coins,gained);
  for(let i=0;i<2;i++){const {data,error}=await clients[i].from('characters').select('coins,inventory,xp').eq('id',characters[i].id).single();if(error)throw error;assert.equal(data.coins,peers[i].state.character.coins);assert.deepEqual(data.inventory,peers[i].state.character.inventory);}
  await writeFile('artifacts/gameplay-integration.json',JSON.stringify({testedAt:new Date().toISOString(),endpoint,players:2,checks:['independent real Auth and WebSocket sessions','server collision routes across jurisdictions','verified mining reward persisted once','node cooldown enforced','server enemy kill XP and coin reward persisted','replayed kill message rejected']},null,2));
  console.log('Gameplay passed: two real sessions, movement to forest/mines, persisted mining and combat rewards, node cooldown and replay rejection.');
-}finally{clearInterval(fighting);peers.forEach(p=>p.close());for(const c of clients)await c.auth.signOut();}
+}finally{clearInterval(fighting);peers.forEach(p=>p.close());for(const c of clients)await c.auth.signOut({scope:'local'});}

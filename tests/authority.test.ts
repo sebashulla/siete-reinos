@@ -65,6 +65,8 @@ test('hardcore execution needs consent, resolved appeal, human review and online
  e.disconnect(defendant.character.id);command(e,'char-0','review',102000,cases[1].id);assert.equal(cases[1].humanReview,undefined);
  e.add(character(1));e.updateMembers(new Set(['user-0','user-1']),new Set(['user-0']));command(e,'char-0','review',102100,cases[1].id);assert.equal(cases[1].humanReview,undefined);
  e.updateMembers(new Set(['user-0','user-1']),new Set(['user-0','user-1']));command(e,'char-0','review',102200,cases[1].id);assert.ok(cases[1].humanReview);
+ cases[0].evidence.witnesses=[];command(e,'char-0','execute',102250,cases[1].id);assert.notEqual(defendant.actor.state,'executed');cases[0].evidence.witnesses=['judge'];
+ const disabled=new WorldEngine({...campaign,mode:'hardcore'},e.export(),false,new Set(['user-0','user-1']));disabled.add(character(0));disabled.add(character(1));command(disabled,'char-0','execute',102275,cases[1].id);assert.notEqual(disabled.state.players['char-1'].actor.state,'executed');
  command(e,'char-0','execute',102300,cases[1].id);assert.equal(defendant.actor.state,'executed');assert.equal(defendant.character.life_status,'executed');
 });
 test('interest filtering protects distant entities while events reach the campaign',()=>{

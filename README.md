@@ -38,6 +38,8 @@ Sin servidor configurado, entrar a una campaña muestra un error. La aventura lo
 
 Una campaña conserva mundo y membresías al desconectar. Cada cuenta puede pertenecer a varias; cada campaña admite un personaje activo por cuenta. El propietario elige definitivamente dónde vincular su personaje heredado mediante una operación atómica, únicamente en una campaña casual. Crear otra campaña empieza un personaje nuevo; no traslada progreso. Los nombres conservan unicidad global para preservar los personajes anteriores.
 
+Para comprobar una exportación periódica v2 usar `node scripts/verify-backup.mjs /private/backup/fecha`. Restaura las diez tablas de la aplicación en PostgreSQL local y compara todos sus valores, incluidas campañas y plazos. La restauración del servicio Auth gestionado requiere la copia completa de plataforma independiente.
+
 ## Mundo y mecánicas
 
 - Mundo de 5760 × 4320, sectores de decoración, colisiones compartidas entre cliente y servidor, caminos y minimapa. Valdoria, Éldara y Duncrest tienen NPC y objetivos. Auralis, Umbria, Saharim y Ceniza tienen geografía y fronteras preparadas para posteriores ampliaciones.

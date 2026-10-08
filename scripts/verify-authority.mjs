@@ -103,4 +103,4 @@ try{
  }
  await mkdir('artifacts',{recursive:true});await writeFile('artifacts/authority-integration'+(remote?'-render':'')+'.json',JSON.stringify(report,null,2));
  console.log('Authoritative integration passed:',report.checks.join('; '));
-}finally{peers.forEach(p=>p.close());await stop();proxy?.close();for(const c of clients)await c.auth.signOut();}
+}finally{peers.forEach(p=>p.close());await stop();proxy?.close();for(const c of clients)await c.auth.signOut({scope:'local'});}
