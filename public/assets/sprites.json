@@ -1,0 +1,29 @@
+{
+  "cell": {
+    "width": 32,
+    "height": 32
+  },
+  "columns": 8,
+  "rows": 20,
+  "directions": [
+    "down",
+    "left",
+    "right",
+    "up"
+  ],
+  "actions": [
+    "idle",
+    "walk",
+    "attack",
+    "hurt",
+    "death"
+  ],
+  "fps": {
+    "idle": 5,
+    "walk": 10,
+    "attack": 18,
+    "hurt": 16,
+    "death": 10
+  },
+  "license": "Original procedural pixel art. Project license: MIT."
+}
