@@ -7,11 +7,14 @@ export const PALETTES = ['forest', 'ember', 'violet'] as const;
 export type Palette = typeof PALETTES[number];
 export interface Appearance { palette: Palette; skin: 'warm' | 'deep' | 'light' }
 export interface Character {
+  campaign_id?: string | null; life_status?: 'active' | 'executed';
   id: string; user_id: string; name: string; affinity: Affinity; appearance: Appearance;
   level: number; xp: number; coins: number;
   inventory: Record<string, number>; equipment: { weapon: string; armor: string };
   skills: string[]; updated_at: string;
 }
+export interface Campaign { id:string; name:string; invite_code:string; owner_id:string; mode:'casual'|'hardcore'; rules_version:number; created_at:string }
+export interface CampaignMembership { campaign_id:string; user_id:string; role:'owner'|'member'; consent_version:number|null }
 export interface Member {
   user_id: string; character_id: string; name: string; affinity: Affinity; appearance: Appearance;
 }

@@ -1,7 +1,7 @@
 {
   "name": "los-siete-reinos",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -9,19 +9,24 @@
     "preview": "vite preview --host 127.0.0.1",
     "assets": "node scripts/generate-assets.mjs",
     "test": "tsx --test tests/*.test.ts",
-    "test:online": "node --env-file=.env.local scripts/verify-online.mjs",
-    "test:sql": "node scripts/verify-sql.mjs"
+    "test:online": "node --env-file=.env.local --env-file=.env.server.local scripts/verify-authority.mjs",
+    "test:sql": "node scripts/verify-sql.mjs",
+    "server": "node --env-file-if-exists=.env.server.local --import tsx server/index.ts",
+    "check:server": "tsc -p tsconfig.server.json",
+    "test:campaigns": "node scripts/verify-campaigns.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.0",
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "tsx": "^4.23.15",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14",
     "@types/node": "^24.0.0",
     "@types/pngjs": "^6.0.5",
+    "@types/ws": "^8.18.2",
     "pngjs": "^7.0.0",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vite": "^7.1.0"
   }

@@ -1,107 +1,83 @@
-# Los Siete Reinos · Web Edition
+# Los Siete Reinos · v0.2
 
-Prototipo RPG cenital en Phaser 3, TypeScript estricto y Vite, sin React. Interfaz en español. Recursos originales de pixel art generados por código, sin imágenes de terceros.
+RPG cenital en Phaser, TypeScript y Vite. Interfaz en español, dos personajes originales en pixel art, campañas privadas persistentes para hasta cuatro integrantes.
 
-**Jugar en la web:** [siete-reinos.vercel.app](https://siete-reinos.vercel.app/). Desplegado en Vercel y conectado a Supabase. Registro y salas privadas disponibles desde el navegador.
+## Arquitectura
+
+Vercel aloja el cliente. Node.js en Render verifica Supabase Auth y la pertenencia a la campaña antes de aceptar `/game`. El cliente envía intenciones; Node calcula movimiento, colisiones, daño, minería, inventarios, leyes y eventos. Supabase Realtime no participa en la partida.
+
+La simulación de movimiento funciona a 20 Hz y los estados a 10 Hz. El servidor filtra entidades a 1250 píxeles del jugador. El cliente predice su movimiento y corrige su posición con los estados del servidor; interpola compañeros, NPC y enemigos. Durante una transacción se conserva el movimiento y se suspenden nuevas operaciones críticas. Los estados económicos y judiciales se publican después de confirmar el guardado.
+
+`/healthz` devuelve versión, protocolo y disponibilidad del proceso. Todos los mensajes incluyen protocolo v2, campaña y secuencia; los estados también incluyen época de autoridad. Una cuenta solo mantiene una conexión activa por personaje.
 
 ## Ejecutar
 
-Requiere Node.js 22.12 o superior.
+Requiere Node 24.
 
 ```sh
 npm ci
-cp .env.example .env.local
+# Copiar .env.example a .env.local y completar las tres variables públicas.
+# Copiar server/.env.example a .env.server.local y configurar el servidor.
+npm run server
 npm run dev
 ```
 
-En PowerShell: `Copy-Item .env.example .env.local`. Rellena únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` para conectar el juego. El archivo `.env.local` está ignorado por Git. Sin configuración válida sigue disponible la aventura local; las salas en línea muestran que necesitan Supabase.
+Cliente: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_GAME_SERVER_URL`. Servidor: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ALLOWED_ORIGINS`. La clave privilegiada no tiene prefijo VITE y nunca se entrega al cliente. Los archivos locales de configuración están ignorados por Git. Los ejemplos no contienen credenciales reales.
 
-## Preparar Supabase
+Sin servidor configurado, entrar a una campaña muestra un error. La aventura local es una opción independiente y explícita: nunca reemplaza una conexión fallida ni importa sus monedas al personaje persistente.
 
-1. Ejecuta `supabase/migrations/202610080001_initial.sql` como postgres desde SQL Editor, una sola vez en un proyecto nuevo.
-2. Realtime → Settings: desactiva **Allow public access to channels**. El cliente usa siempre `config.private: true`.
-3. Authentication → URL Configuration: configura Site URL y Redirect URLs para los orígenes locales y la URL de Vercel. En desarrollo: `http://127.0.0.1:5173` y `http://localhost:5173`.
-4. Mantén el registro con correo/contraseña y la confirmación de correo. Para usuarios reales configura un proveedor SMTP si los límites del correo de desarrollo no bastan.
-5. Registra dos cuentas desde la aplicación, confirma sus correos, inicia sesión y crea sus personajes. Los nombres son únicos, sin distinguir mayúsculas, de 3–18 letras ASCII, números o guion bajo. Si hay un conflicto de nombre después de confirmar el correo, el formulario permite elegir otro.
-6. La primera persona crea una sala; la segunda introduce su código de 12 caracteres. Hay un máximo de cuatro integrantes. Usa dos perfiles de navegador o una ventana privada para sesiones independientes. En pruebas locales también puedes usar `127.0.0.1` y `localhost`, que tienen almacenamiento de Auth separado.
+## Migrar y desplegar
 
-## Disponible
+1. Exportar datos y esquema a un directorio privado fuera del repositorio. Guardar también el catálogo real de PostgreSQL, políticas, funciones y las identidades de Auth. Para una copia completa de la plataforma usar `supabase db dump`/`pg_dump`; la exportación de progreso no reemplaza las copias de Storage ni todos los componentes gestionados de Auth. [Backups de Supabase](https://supabase.com/docs/guides/platform/backups).
+2. `node --env-file=.env.server.local scripts/backup-progress.mjs /private/backup/v1` exporta las tablas de la aplicación y los metadatos de identidad. No ejecutar sobre un directorio dentro del repositorio. Conservar una copia completa independiente y cifrada cuando el proyecto crezca.
+3. `node scripts/rehearse-migration.mjs /private/backup/v1` restaura las tablas en PostgreSQL local PGlite, comprueba el esquema real y ensaya la migración. El catálogo privado esperado es `live-catalog-and-auth.json`, exportado desde el SQL Editor; no subirlo a Git.
+4. En proyectos nuevos aplicar `202610080001_initial.sql` y después `202610080002_campaigns.sql`. En el proyecto existente aplicar solo la segunda, una única vez, tras superar restauración y regresión. La migración es transaccional y aditiva: los personajes existentes quedan sin campaña; no se copian ni se reinician.
+5. Crear un servicio web **Free** en Render con este repositorio, raíz del repositorio, build `npm ci --include=dev && npm run check:server`, inicio `npm run server`, health check `/healthz`. `render.yaml` contiene la configuración equivalente. Configurar las credenciales privilegiadas únicamente allí y mantener `ALLOW_HARDCORE_EXECUTIONS=false` en producción.
+6. Vercel: Vite, build `npm run build`, salida `dist`. Configurar las tres variables públicas y reconstruir. Supabase Auth debe incluir el dominio publicado en Site URL y Redirect URLs. Mantener confirmación de correo y configurar SMTP para correo real cuando sea necesario.
+7. No actualizar producción en Vercel hasta pasar pruebas con personajes existentes, dos sesiones independientes y cuatro usuarios, aislamiento, falsificación, repetición, reinicios y fallos de guardado.
 
-- Registro, inicio y cierre de sesión con Supabase Auth; confirmación por correo y recuperación automática de sesión.
-- Un personaje por cuenta: espadachín o mago; tres colores de vestimenta y tres tonos de piel. Recuperación de nivel, experiencia, equipo, inventario y habilidades desde PostgreSQL.
-- Salas privadas: crear, unirse por código, regresar después de recargar, abandonar y transferir la propiedad al salir. Diez intentos de código por minuto por cuenta; bloqueo de salas completas mediante transacción y bloqueo de fila.
-- Multijugador real: Presence y Broadcast privados, posiciones interpoladas y animaciones de espada, magia, esquiva y extracción. Combate cooperativo de práctica con cuatro enemigos: el creador simula su IA y vida temporal, los demás reciben snapshots interpolados cada 350 ms y sus ataques se procesan en ese anfitrión. Sin recompensas persistentes. Integrantes canónicos obtenidos de SQL; suscripciones y jugadores remotos eliminados al desconectarse. Movimiento a un máximo aproximado de 5,3 mensajes/s por jugador; posición estacionaria cada 800 ms. Presence se publica al suscribirse o reconectar, nunca en cada frame.
-- Valdoria, bosque, minas, lago y círculo antiguo; cámara, colisiones, minimapa, NPC y diálogos.
-- Aventura **local separada**: enemigos con persecución, espada, proyectiles, daño, muerte y reaparición; experiencia, niveles, habilidad híbrida desde nivel 3, minería, inventario, pociones, comerciante y contribuciones a la herrería. Guarda en este navegador. No se importa a la cuenta ni otorga recompensas online.
-- 18 spritesheets de personajes (2 afinidades × 3 paletas × 3 tonos de piel), de 256×640 px, con 160 celdas transparentes de 32×32 px. Filas: idle, caminar, ataque, daño y muerte; en cada acción, abajo, izquierda, derecha y arriba. Ocho frames por fila. `public/assets/sprites.json` documenta el formato; `npm run assets` los regenera de manera reproducible.
-- Menú principal, lobby, personalización, ajustes de interfaz y guía. El menú presenta una ilustración del mapa, identificada como tal, sin contar sus figuras como jugadores conectados.
+Una campaña conserva mundo y membresías al desconectar. Cada cuenta puede pertenecer a varias; cada campaña admite un personaje activo por cuenta. El propietario elige definitivamente dónde vincular su personaje heredado mediante una operación atómica, únicamente en una campaña casual. Crear otra campaña empieza un personaje nuevo; no traslada progreso. Los nombres conservan unicidad global para preservar los personajes anteriores.
 
-## Controles
+## Mundo y mecánicas
 
-| Tecla | Acción |
-|---|---|
-| WASD / flechas | Caminar |
-| Espacio / clic izquierdo en el mapa | Espada |
-| Q | Proyectil mágico |
-| Shift | Esquiva, recarga de 1,5 s |
-| E | Hablar / extraer mineral cerca de una veta |
-| I / K | Inventario / habilidades |
-| M | Mostrar u ocultar minimapa |
-| Esc | Menú / cerrar diálogo |
+- Mundo de 5760 × 4320, sectores de decoración, colisiones compartidas entre cliente y servidor, caminos y minimapa. Valdoria, Éldara y Duncrest tienen NPC y objetivos. Auralis, Umbria, Saharim y Ceniza tienen geografía y fronteras preparadas para posteriores ampliaciones.
+- Espada, magia, esquiva, vida y maná; enemigos con IA, barras de vida para jugadores y NPC, rescate de compañeros caídos y reaparición normal. Los clientes no eligen daño ni recompensas.
+- Minería con alcance, duración, permiso real en vetas reguladas y recuperación de vetas. Pociones, venta de Feron legítimo con precios por suministros, herrería compartida y entrenamiento. La procedencia de cada lote impide vender o decomisar inventario legítimo como mercancía robada.
+- Fronteras y leyes visibles con L, reputación territorial, advertencias, expulsión de zonas restringidas, multas, guardias, arrestos de 1–10 minutos y trabajos comunitarios con límite de frecuencia. Pruebas generadas por el servidor: autor, víctima, coordenadas, UTC, testigos y versión de ley. Las acciones de minería conservan la regla vigente al empezar para evitar sanciones retroactivas.
+- Restituir bienes robados retira solo el lote ilícito. Una apelación puede anular la causa por pruebas insuficientes, terminar una sanción tras restitución o reducir el tiempo de prisión. La crisis puede poseer un guardia: su agresión registrada permite distinguir defensa legítima de una agresión iniciada por el jugador.
+- Eventos deterministas: caravana con vida atacada, defensa de un comerciante del bosque y crisis en las minas. El fracaso modifica suministros, seguridad, prosperidad, opinión y precios. Resolver el objetivo recupera gradualmente los suministros. Las crisis añaden temporalmente controles mineros. Los gobiernos de jugadores permanecen fuera de esta entrega.
+- El registro aceptado sustituye el formulario por el mensaje seguro de confirmación, acceso al inicio de sesión y reenvío tras 60 segundos. La selección de nombre, afinidad y apariencia se recupera después de confirmar la identidad.
 
-En línea, abrir un diálogo detiene a tu personaje y los demás pueden continuar.
+## Hardcore
 
-## Seguridad y límites
+Se crea como mundo separado y exige consentimiento individual versionado. Una campaña casual no se puede convertir. Las muertes normales admiten rescate y reaparición. Una ejecución judicial solo puede ocurrir si el servidor la habilita explícitamente, hay reincidencia y pruebas verificadas, consentimiento de todos, apelación resuelta, revisión humana del propietario, plazo cumplido y personaje conectado. No existe un temporizador que ejecute al personaje. Los datos del personaje ejecutado quedan archivados.
 
-El navegador utiliza **solo la URL pública y la publishable key**. No contiene ni necesita claves secretas o service_role. Nunca añadas una clave administrativa a una variable `VITE_`. No uses la antigua anon key junto a la publishable key: el cliente solo necesita esta última.
+**La bandera de ejecuciones está desactivada en producción.** Los requisitos se prueban en campañas aisladas. El propietario no recibe un endpoint que permita otorgar monedas ni inventario; su única intervención especial es revisar una sentencia válida.
 
-`profiles` y `characters` son legibles únicamente por su propietario mediante RLS. Las tablas no conceden permisos de escritura a `anon` o `authenticated`. Los RPC de creación y personalización verifican `auth.uid()` y solo admiten los campos permitidos; las estadísticas iniciales las fija SQL. El JSON de apariencia rechaza campos adicionales. No existe un RPC cliente para aumentar experiencia, nivel, materiales o monedas.
+## Persistencia y recuperación
 
-Las membresías y salas se modifican solo mediante RPC. Cada emisor publica en `room:<uuid>:player:<auth.uid()>`. Las políticas sobre `realtime.messages` permiten recibir solo a integrantes y escribir solo en el canal propio, por lo que falsificar un identificador en un payload no permite actuar como otro jugador. La lectura pública del roster devuelve únicamente nombre, afinidad y apariencia a integrantes de esa misma sala. Realtime tiene que estar configurado para rechazar canales públicos.
+PostgreSQL confirma cada cambio crítico en una transacción con identificador idempotente y revisión optimista. `campaign_state` guarda el punto de recuperación, `game_commits` conserva el registro de cambios críticos y `campaign_audit` las pruebas originales. Las concesiones temporales de autoridad usan una época y caducidad: un servidor anterior no puede guardar después de un relevo. Los plazos judiciales son UTC persistente y se evalúan al recuperar el mundo.
 
-**Realtime no es un servidor autoritativo.** Un cliente modificado puede falsear su propia posición o animación. Validación de payloads, límites locales y secuencias protegen al cliente normal contra paquetes inválidos y repetidos; no prueban que una acción haya ocurrido. El anfitrión coordina el daño y vida compartidos de los enemigos **solo como estado temporal de práctica**; limita la distancia, enfriamientos y maná de las acciones remotas recibidas, pero él también es un cliente manipulable. La salud del jugador, su maná y su reaparición son locales y efímeros. La minería en línea comparte la animación de extracción y no crea materiales guardados. Ninguna de esas acciones produce recompensas persistentes. El inventario online conserva sus valores del servidor y no consume pociones sin una operación verificada.
+Si PostgreSQL falla se pausa el combate que altera estado, la economía y la justicia; el mismo commit se reintenta sin duplicar resultados. El cliente muestra el problema y conserva su sesión para reconectar. El servidor cierra campañas vacías y libera autoridad; no usa archivos locales para persistencia.
 
-Solo se aceptan snapshots de enemigos desde el canal del propietario SQL actual. Si el propietario cierra el navegador sin abandonar la sala, la simulación espera su regreso y la vida temporal puede reiniciarse. Al abandonar explícitamente la sala, SQL transfiere la propiedad; el siguiente anfitrión continúa desde las réplicas recibidas, con posibles reinicios de enemigos y temporizadores. Esto no sustituye un servidor dedicado ni garantiza continuidad sin desincronizaciones. Los combates de práctica usan atributos base para los atacantes remotos; la progresión online avanzada queda para el servidor.
+[Render Free](https://render.com/docs/free) puede dormir tras 15 minutos sin actividad y reiniciar servicios; el arranque puede tardar alrededor de un minuto. [WebSocket en Render](https://render.com/docs/websocket) requiere `wss://` desde HTTPS. No mantener artificialmente despierto el servicio. [Supabase Free puede pausar proyectos](https://supabase.com/docs/guides/platform/free-project-pausing); reanudarlos desde el panel y volver a conectar. Exportar periódicamente fuera del repositorio y comprobar restauración. No resetear personajes para resolver una pausa.
 
-Supabase calcula y almacena los permisos privados al conectar/renovar JWT; una revocación de membresía no expulsa inmediatamente un socket malicioso ya abierto ([documentación oficial](https://supabase.com/docs/guides/realtime/authorization)). Los clientes normales consultan el roster cada 4 s y eliminan las suscripciones revocadas. Para revocación estricta inmediata será necesario un gateway autoritativo y una política de tokens apropiada. Los códigos conceden acceso a quien los conoce; no son invitaciones vinculadas a un correo.
-
-La pertenencia permanece si se cierra el navegador; permite volver a la sala desde el lobby. Presence representa las conexiones actuales. El botón salir elimina la membresía; al quedar vacía, la sala se cierra. Si todos abandonan el navegador sin salir, la sala permanece recuperable. Limpieza por expiración queda pendiente para el backend.
-
-## Próxima etapa
-
-Implementar un servidor que valide movimiento, distancia, enfriamientos, salud de enemigos y disponibilidad de vetas, mantenga el estado compartido y otorgue recompensas mediante transacciones idempotentes. Solo ese proceso podrá escribir progresión, inventario y economía. La interfaz de red (`MultiplayerService`) y los sistemas de datos están separados de `Player` y de sus sprites para sustituir el transporte y las reglas sin rehacer la representación visual.
-
-Quedan pendientes: reemplazar el anfitrión cliente por enemigos/combate autoritativos de servidor, minería con recompensas online, construcción comunitaria entre cuentas, mejoras de equipo online y modo Conquista PvP con captura. No se muestran botones de Conquista que aparenten funcionar. El círculo del mapa está disponible para explorar.
-
-## Comprobaciones
+## Verificación
 
 ```sh
-npm run test       # XP, inventario, protocolo, interpolación y 2.880 frames de sprites
-npm run test:sql   # PostgreSQL embebido: migración real y permisos/RLS/RPC
-npm run build     # TypeScript estricto + compilación de producción
-npm run test:online
+npm run build
+npm run check:server
+npm test
+npm run test:sql
+npm run test:campaigns
 ```
 
-`test:online` usa dos clientes Supabase independientes, sin sesión compartida ni mocks. Configura `TEST_EMAIL_A`, `TEST_PASSWORD_A`, `TEST_EMAIL_B`, `TEST_PASSWORD_B` en `.env.local` con **cuentas de prueba confirmadas**, nunca variables `VITE_`. Crea personajes si faltan, sale de salas previas de esas dos cuentas, crea una sala nueva y verifica Broadcast en ambas direcciones, Presence, reconexión, recuperación de progreso, rechazo de escritura de estadísticas y acceso denegado a un cliente externo. Al terminar abandona la sala y cierra las conexiones. Conserva las cuentas/personajes de prueba. Escribe un informe sin credenciales en `artifacts/online-verification.json` (ignorado por Git). Una prueba fallida nunca acredita conexión real.
+Las pruebas cubren sprites, colisiones, límites de protocolo, cuatro actores, vida y recompensas, minería, procedencia y apelaciones, rescate y UTC, restricciones hardcore, aislamiento, preservación exacta, límite de miembros, RLS, rechazo de writes del navegador, atomicidad, idempotencia y exclusión de servidores simultáneos.
 
-Validación realizada el 8 de octubre de 2026 en el proyecto Supabase configurado: las cuentas **QA_Sol** y **QA_Luna** iniciaron sesión desde `127.0.0.1` y `localhost`, con almacenamiento de Auth independiente. Ambas entraron por código, se vieron moverse en Valdoria y atacaron al mismo enemigo: espada y magia redujeron su vida de 70 a 10; la derrota y la reaparición se reflejaron en ambas sesiones. Se verificó también la salida de la sala y la eliminación de Presence. El informe automatizado completó sus 13 comprobaciones de red y permisos. La compilación, las ocho pruebas de sistemas/recursos gráficos y la validación SQL pasaron.
+Las pruebas de integración requieren cuentas QA confirmadas y sesiones de Auth independientes. Nunca guardar sus contraseñas en informes o en Git. Usar dos orígenes locales (`127.0.0.1` y `localhost`) o perfiles independientes para la prueba visual; dos pestañas del mismo origen comparten Auth.
 
-Estas dos cuentas se crearon y confirmaron desde el panel administrativo, con autorización del propietario, porque el registro público de Supabase rechazó los correos del dominio reservado `example.com`. Por tanto, la prueba acredita login, creación de personajes mediante RPC, persistencia y red real; **no acredita entrega del correo de confirmación ni un registro público completo con correo real**. El formulario de registro y la confirmación permanecen habilitados para usuarios reales. Las contraseñas de prueba solo están en `.env.local`, fuera de Git. La prueba en navegador de minería local verificó feron de 0 a 1 y experiencia de 0 a 12; ese progreso no se importó a Supabase.
+## Controles y arte
 
-En desarrollo, `?qa=1` muestra botones que mantienen una dirección durante un segundo para pruebas repetibles en navegador. Mueven al jugador mediante la misma física y el mismo transporte real; no crean compañeros simulados ni modifican el progreso. Esos controles se excluyen de la compilación de producción.
+WASD/flechas: moverse; espacio/clic: espada; Q: magia; Shift: esquiva; E: hablar, minar o rescatar; I: inventario; K: habilidades; M: minimapa; L: leyes; F: pantalla completa; Esc: menú. Zoom ajustable y paneles plegables. Abrir un diálogo detiene a tu personaje; el mundo compartido continúa.
 
-## Vercel
-
-1. En Vercel, importa el repositorio GitHub como un proyecto nuevo. Selecciona **Vite**, directorio raíz del repositorio, build `npm run build` y output `dist`.
-2. Antes de desplegar, configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` con los valores públicos del proyecto Supabase. Se incorporan durante la compilación; si los cambias, vuelve a desplegar. Las credenciales locales y de las cuentas QA no se suben a GitHub.
-3. Despliega y copia la URL HTTPS asignada por Vercel.
-4. En Supabase → Authentication → URL Configuration, configura esa URL como **Site URL** y añádela a **Redirect URLs** para que la confirmación de correo regrese al juego publicado. Puedes conservar los dos redirects locales para desarrollo.
-5. Prueba dos cuentas desde dos perfiles de navegador o una ventana privada en la URL publicada. `localhost` y `127.0.0.1` sirven únicamente en tu computadora.
-
-`vercel.json` ya incluye la compilación y los encabezados básicos. Esta versión no necesita ejecutar `npm run dev` ni mantener encendida tu computadora después del despliegue: **Vercel sirve la web; Supabase aloja Auth, PostgreSQL y Realtime**. El navegador del creador de la sala coordina los enemigos de práctica mientras está conectado. Vercel no convierte ese cliente en un servidor autoritativo. Para recompensas verificadas, economía y PvP seguro habrá que implementar un backend de validación; las operaciones por solicitud pueden alojarse, por ejemplo, en Supabase Edge Functions o Vercel Functions, y una simulación continua requerirá una solución adecuada para mantener su estado. Ninguno de esos servicios adicionales está implementado en esta versión.
-
-## Estructura
-
-`src/scenes`: LobbyScene / GameScene. `src/entities`: Player / Enemy. `src/systems`: combate, inventario, recursos y progresión. `src/services`: Supabase, persistencia y multijugador. `src/net`: protocolo y validación. `src/art`: carga y animaciones. `src/data`: estadísticas, habilidades, objetos y tipos. `scripts/generate-assets.mjs`: dibujo original por píxeles, paletas, props y spritesheets. `supabase/migrations`: esquema y permisos.
-
-Recursos y código originales de este proyecto: licencia MIT. Los sprites son arte programático deliberado, no imágenes producidas por una herramienta de generación artística.
+18 spritesheets originales generados por código (2 afinidades × 3 paletas × 3 tonos), 160 frames transparentes de 32×32 por hoja: idle, caminar en cuatro direcciones, ataque, daño y muerte. `npm run assets` los regenera. La representación visual permanece separada de estadísticas y reglas; `src/shared` no depende de Phaser.

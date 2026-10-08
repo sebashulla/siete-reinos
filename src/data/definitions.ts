@@ -24,4 +24,4 @@ export function statsFor(character: Character): Stats {
     physical: base.physical + (character.level - 1) * 3,
     magical: base.magical + (character.level - 1) * 4 };
 }
-export const WORLD = { width: 1920, height: 1440, tile: 32, spawn: { x: 960, y: 800 } };
+export const WORLD = { width: 5760, height: 4320, tile: 32, spawn: { x: 2880, y: 2240 } };

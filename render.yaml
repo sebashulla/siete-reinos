@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: siete-reinos-server
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run check:server
+    startCommand: npm run server
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://siete-reinos.vercel.app,http://127.0.0.1:5173,http://localhost:5173
+      - key: ALLOW_HARDCORE_EXECUTIONS
+        value: false

@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","compilerOptions":{"types":["node"],"noUnusedLocals":true,"noUnusedParameters":true},"include":["server","src/shared","src/data","src/systems/ProgressionSystem.ts"]}
